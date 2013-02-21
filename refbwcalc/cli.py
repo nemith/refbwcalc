@@ -5,8 +5,7 @@ import sys
 import io
 import blessings
 import colorama
-from refbwcalc import (get_version, parse_bandwidth, 
-                       format_bandwidth, calculate_cost, 
+from refbwcalc import (Bandwidth, Cost, get_version, calculate_cost, 
                        DEFAULT_COMPARISON_BW)
 
 class Color(object):
@@ -39,17 +38,16 @@ def output_terminal(refbw, comp_list, color):
 
     print "Calulating the OSPF cost values"\
           "for reference bandwidth: '{c.bright_green}{}{c.normal}'\n".format(
-           format_bandwidth(refbw), c=c)
+           refbw, c=c)
 
     for comp in generate_calc_list(refbw, comp_list):
         info = "({})".format(comp.info) if comp.info else ""
-        (_, num, unit) = re.split('([\d.]+)', format_bandwidth(comp.compbw))
-
-        print "Cost at {c.bright_green}{num:>5}{c.green}{unit:<4}{c.normal}:  "\
+        print "Cost at {c.bright_green}{r.compbw.value:>5,.4g}"\
+              "{c.green}{r.compbw.unit:<4}{c.normal}:  "\
               "{c.cyan}{r.cost:5}{c.normal} {c.bright_yellow}{info:18}{c.normal} "\
               "hops @ 24-bit {c.magenta}{r.hops_24bit:10}{c.normal}   "\
               "hops @ 32-bit {c.magenta}{r.hops_32bit:10}{c.normal}".format(
-               num=num, unit=unit, r=comp, info=info, c=c)
+               r=comp, info=info, c=c)
 
 
 def output_csv(refbw, comp_list):
@@ -78,12 +76,11 @@ def main(argv=sys.argv[1:]):
         the calulated value against common links found in modern networks.""")
     parser.add_argument('ref_bw', metavar='REFBW',
                         help="Reference bandwidth to calulate against")
-    default_compaisons = [format_bandwidth(parse_bandwidth(x)) 
-                          for x in DEFAULT_COMPARISON_BW]
+    default_compairisons = [str(Bandwidth(x)) for x in DEFAULT_COMPARISON_BW]
     parser.add_argument('-b', '--comparison-bw', metavar='BW', nargs='*', 
                         default=DEFAULT_COMPARISON_BW, dest="bw_values",
                         help="Bandwith values to test (default: %s)" % 
-                              ', '.join(default_compaisons))
+                              ', '.join(default_compairisons))
     parser.add_argument('-a', '--add-comparison', metavar='BW', nargs='*',
                         default = [], dest="add_bw_values",
                         help="Add additional bandwidth values to test.")
@@ -101,10 +98,10 @@ def main(argv=sys.argv[1:]):
                         version='%(prog)s ' + get_version())
 
     args = parser.parse_args(argv)  
-    refbw = parse_bandwidth(args.ref_bw, default_unit='m')
+    refbw = Bandwidth(args.ref_bw, default_unit='m')
 
-    comp_list = unique(sorted([parse_bandwidth(x) for x in args.bw_values + 
-                      args.add_bw_values], reverse=True))
+    comp_list = [Bandwidth(x) for x in args.bw_values + args.add_bw_values]
+    comp_list = unique(sorted(comp_list, reverse=True))
 
     if args.format == 'normal':
         output_terminal(refbw, comp_list, args.color)

@@ -1,11 +1,12 @@
 import argparse
 import re
 import sys
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
+from functools import total_ordering
 
 
 #          Major, Minor, SR
-VERSION = (0,     1,     None)
+VERSION = (0,     1,     1)
 
 
 DEFAULT_COMPARISON_BW = ['100g', '40g', '10g', '1g', '100m', '10m', '6.176m',
@@ -18,59 +19,104 @@ def get_version():
         version = '%s.%s' % (version, VERSION[2])
     return version
 
+@total_ordering
+class Bandwidth(object):
+    """ Object to represent and parse bandwith values"""
+    UNITS = OrderedDict([
+        ('bps', 1),
+        ('Kbps', 2**10),
+        ('Mbps', 2**20),
+        ('Gbps', 2**30),
+        ('Tbps', 2**40),
+        ('Pbps', 2**50)
+    ])
+    # Use lower case for matching
+    MATCHING_UNITS = {x.lower(): y for (x,y) in UNITS.iteritems()}
+    # Also allow matching on the first letter ommiting bps
+    MATCHING_UNITS.update({x[0]: y for (x,y) in MATCHING_UNITS.iteritems()})
 
-def parse_bandwidth(value, default_unit=None):
-    UNIT_TABLE = {
-        'p': 2**50,
-        't': 2**40,
-        'g': 2**30,
-        'm': 2**20,
-        'k': 2**10,
-        'b': 1,
-    }
-
-    if isinstance(value, str):
-        # See if it is just a number without a uniot
-        try:
-            value = int(value)
-        except ValueError:
-            try:
-                value = float(value)
-            except ValueError:
-                pass
-    if isinstance(value, (float, int, long)):
-        if default_unit:
-            if default_unit not in UNIT_TABLE.keys():
-                raise ValueError("Invalid unit: '%s'. Unit must be one of the " \
-                                 "following '%s" % 
-                                 (default_unit, ', '.join(UNIT_TABLE.keys())))
-            return parse_bandwidth("%s%s" % (value, default_unit))
+    def __init__(self, value=None, default_unit=None):
+        if value:
+            self.parse(value, default_unit=default_unit)
         else:
-            return value
-    else:
-        match = re.match(r'(?P<num>[\d.]+)(?P<unit>[ptgmkb](k(bps)?)?)', 
-                         value.strip(), flags=re.IGNORECASE)
-        if not match:
-            raise ValueError("invalid bandwidth string '%s'. Must be digit" \
-                             "followed one of the following units: '%s'" % 
-                                 (value, ', '.join(UNIT_TABLE.keys())))
-        return int(float(match.group('num')) * 
-               UNIT_TABLE[match.group('unit').lower()])
+            self.bw = 0
 
+    def parse(self, value, default_unit=None):
+        if isinstance(value, str):
+            # See if it is just a number without a units
+            try:
+                value = int(value)
+            except ValueError:
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
 
-def format_bandwidth(num, precision=4):
-    FORMAT = "{:,.%dg}{}" % precision
-    for x in ['bps', 'Kbps', 'Mbps', 'Gbps']:
-        if num < 1024.0:
-            return FORMAT.format(num, x)
-        num /= 1024.0
-    return FORMAT.format(num, 'Tbps')
+        if isinstance(value, (float, int, long)):
+            if default_unit:
+                if default_unit not in self.MATCHING_UNITS.keys():
+                    raise ValueError("Invalid unit: '%s'. Unit must be one of the " \
+                                     "following '%s" % 
+                                     (default_unit, ', '.join(MATCHING_UNITS.keys())))
+                return self.parse("%s%s" % (value, default_unit))
+        else:
+            match = re.match(r'(?P<num>[\d.]+)(?P<unit>[ptgmkb](k(bps)?)?)', 
+                             value.strip(), flags=re.IGNORECASE)
+            if not match:
+                raise ValueError("invalid bandwidth string '%s'. Must be digit" \
+                                 "followed one of the following units: '%s'" % 
+                                     (value, ', '.join(MATCHING_UNITS.keys())))
+            value = int(float(match.group('num')) * 
+                   self.MATCHING_UNITS[match.group('unit').lower()])
+        self.bw = value
+        return self
+
+    def _update_optimal_unit(self):
+        # Start of with value in bps
+        bw = self._bw
+        for unit in self.UNITS.keys()[:-1]:
+            if bw < 1024.0:
+                break
+            bw /= 1024.0
+        else:
+            # We ran out.  Wow that is fast bandwidth
+            unit = self.UNITS.keys()[-1]
+        (self.value, self.unit) = (bw, unit)
+
+    def format_pretty(self, precision=4):
+        return "{value:,.{precision}g}{unit}".format(value=self.value, 
+                                                     unit=self.unit,
+                                                     precision=precision)
+
+    @property
+    def bw(self):
+        return self._bw
+
+    @bw.setter
+    def bw(self, val):
+        self._bw = val
+        self._update_optimal_unit()
+
+    def __str__(self):
+        return self.format_pretty()
+
+    def __eq__(self, other):
+        if isinstance(other, Bandwidth):
+            return self.bw == other.bw
+        else:
+            return self.bw == Bandwidth(other)
+
+    def __lt__(self, other):
+        if isinstance(other, Bandwidth):
+            return self.bw < other.bw
+        else:
+            return self.bw < Bandwidth(other)
 
 
 Cost = namedtuple('Cost', ['refbw', 'compbw', 'cost', 'hops_24bit', 'hops_32bit', 'info'])
 def calculate_cost(refbw, compbw):
 
-    cost = refbw/compbw
+    cost = refbw.bw/compbw.bw
     info = ""
 
     if cost < 1:
