@@ -3,6 +3,8 @@ from collections import OrderedDict, namedtuple
 from functools import total_ordering
 
 DEFAULT_COMPARISON_BW = [
+    "800g",
+    "400g",
     "100g",
     "40g",
     "10g",
