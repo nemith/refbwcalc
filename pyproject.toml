@@ -1,0 +1,20 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name="refbwcalc"
+version="0.2.0"
+description="Script to calculate the resulting OSPF/IS-IS metrics for different autobw settings"
+authors= [
+    {name='Brandon Bennett', email='bradon@brbe.me'},
+]
+
+dependencies = [
+    "blessings",
+    "colorama",
+]
+
+[project.scripts]
+refbwcalc = "refbwcalc.cli:main"
+

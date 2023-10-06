@@ -23,6 +23,7 @@ dist
 *.bak
 *.pyd
 *.so
+.venv
 
 # OS generated files #
 ######################
